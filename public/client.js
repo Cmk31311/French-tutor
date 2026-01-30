@@ -7,6 +7,7 @@ const conversation = document.getElementById("conversation");
 const lessonSteps = document.getElementById("lessonSteps");
 const vocabCards = document.getElementById("vocabCards");
 const progressFill = document.getElementById("progressFill");
+const audioVisualizer = document.getElementById("audioVisualizer");
 
 let ws;
 let audioCtx;
@@ -17,10 +18,14 @@ let micStream;
 let playCtx;
 let playQueue = [];
 let isPlaying = false;
+let currentSource = null;  // Track current BufferSource to prevent race conditions
 
 let currentLesson = null;
 let vocabularyList = [];
 let conversationHistory = [];
+
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 3;
 
 function setStatus(text, type = 'disconnected') {
   statusPill.textContent = text;
@@ -29,13 +34,15 @@ function setStatus(text, type = 'disconnected') {
 
 function setTTSStatus(speaking) {
   if (speaking) {
-    ttsPill.style.display = 'inline-block';
+    ttsPill.style.display = 'inline-flex';
     ttsPill.textContent = '🔊 Speaking';
     ttsPill.className = 'status-pill status-speaking';
+    audioVisualizer.classList.add('active');
   } else {
-    ttsPill.style.display = 'inline-block';
+    ttsPill.style.display = 'inline-flex';
     ttsPill.textContent = '👂 Listening';
     ttsPill.className = 'status-pill status-listening';
+    audioVisualizer.classList.remove('active');
   }
 }
 
@@ -116,7 +123,7 @@ function addVocabCard(vocab) {
   card.className = 'vocab-card';
   card.innerHTML = `
     <div class="vocab-french">${vocab.french}</div>
-    <div class="vocab-pronunciation">/${vocab.pronunciation}/</div>
+    <div class="vocab-pronunciation">Sounds like: ${vocab.pronunciation}</div>
     <div class="vocab-english">${vocab.english}</div>
     <button class="vocab-play" data-word="${vocab.french}">🔊 Pronounce</button>
   `;
@@ -167,7 +174,22 @@ function floatTo16BitPCM(float32) {
 }
 
 async function ensurePlayback() {
-  if (!playCtx) playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+  if (!playCtx) {
+    try {
+      playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+      console.log('[AudioContext] Created successfully');
+    } catch (error) {
+      console.error('[AudioContext Error]:', error);
+      // Send error to server
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({
+          type: 'client_error',
+          error: 'AudioContext creation failed: ' + error.message
+        }));
+      }
+      throw error;
+    }
+  }
 }
 
 function enqueuePCM16k48k(int16Buffer) {
@@ -178,8 +200,15 @@ function enqueuePCM16k48k(int16Buffer) {
 async function playNextChunk() {
   if (playQueue.length === 0) {
     isPlaying = false;
+    currentSource = null;
     return;
   }
+
+  if (isPlaying && currentSource) {
+    // Already playing, will be called again by onended
+    return;
+  }
+
   isPlaying = true;
   await ensurePlayback();
 
@@ -193,12 +222,34 @@ async function playNextChunk() {
   const node = playCtx.createBufferSource();
   node.buffer = audioBuffer;
   node.connect(playCtx.destination);
-  node.onended = () => playNextChunk();
-  node.start();
+
+  currentSource = node;
+
+  node.onended = () => {
+    currentSource = null;
+    playNextChunk();
+  };
+
+  try {
+    node.start();
+  } catch (error) {
+    console.error('[Audio Playback Error]:', error);
+    currentSource = null;
+    isPlaying = false;
+  }
 }
 
 function clearPlaybackQueue() {
   playQueue = [];
+  if (currentSource) {
+    try {
+      currentSource.stop();
+    } catch (e) {
+      // Already stopped
+    }
+    currentSource = null;
+  }
+  isPlaying = false;
 }
 
 async function start() {
@@ -210,6 +261,7 @@ async function start() {
   ws.binaryType = "arraybuffer";
 
   ws.onopen = async () => {
+    reconnectAttempts = 0;  // Reset reconnect counter on successful connection
     setStatus("Connected", "connected");
     setTTSStatus(false);
     startBtn.disabled = true;
@@ -229,10 +281,24 @@ async function start() {
     stopBtn.disabled = true;
     resetBtn.disabled = true;
     stopMic();
+
+    // Optional: Auto-reconnect logic
+    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+      reconnectAttempts++;
+      console.log(`Reconnect attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
+      setTimeout(() => {
+        if (startBtn.disabled === false) {
+          // Don't auto-reconnect if user manually disconnected
+          return;
+        }
+        start();
+      }, 2000 * reconnectAttempts);  // Exponential backoff
+    }
   };
 
   ws.onerror = (e) => {
     console.error('WebSocket error:', e);
+    setStatus('Connection Error', 'disconnected');
   };
 
   ws.onmessage = (evt) => {
@@ -291,9 +357,29 @@ async function start() {
     }
 
     // Binary audio chunk from TTS (48k linear16 mono)
-    const buf = new Uint8Array(evt.data);
-    const int16 = new Int16Array(buf.buffer, buf.byteOffset, Math.floor(buf.byteLength / 2));
-    enqueuePCM16k48k(int16);
+    try {
+      if (!(evt.data instanceof ArrayBuffer)) {
+        console.error('[Invalid Audio Data]: Expected ArrayBuffer, got', typeof evt.data);
+        return;
+      }
+
+      const buf = new Uint8Array(evt.data);
+
+      if (buf.byteLength === 0) {
+        console.warn('[Empty Audio Chunk]: Skipping');
+        return;
+      }
+
+      if (buf.byteLength % 2 !== 0) {
+        console.warn('[Malformed Audio]: Byte length not divisible by 2');
+      }
+
+      const int16 = new Int16Array(buf.buffer, buf.byteOffset, Math.floor(buf.byteLength / 2));
+      enqueuePCM16k48k(int16);
+
+    } catch (error) {
+      console.error('[Audio Reception Error]:', error);
+    }
   };
 }
 
@@ -337,11 +423,16 @@ async function startMic() {
   processorNode.onaudioprocess = (e) => {
     if (!ws || ws.readyState !== 1) return;
 
-    const input = e.inputBuffer.getChannelData(0);
-    const down = downsampleBuffer(input, inRate, 16000);
-    const pcm16 = floatTo16BitPCM(down);
+    try {
+      const input = e.inputBuffer.getChannelData(0);
+      const down = downsampleBuffer(input, inRate, 16000);
+      const pcm16 = floatTo16BitPCM(down);
 
-    ws.send(pcm16.buffer);
+      ws.send(pcm16.buffer);
+    } catch (error) {
+      console.error('[Audio Processing Error]:', error);
+      // Don't stop processing, just log and continue
+    }
   };
 
   sourceNode.connect(processorNode);

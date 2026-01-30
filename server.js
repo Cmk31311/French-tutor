@@ -118,74 +118,94 @@ wss.on("connection", async (client) => {
   });
 
   stt.on(LiveTranscriptionEvents.Transcript, async (evt) => {
-    // Deepgram SDK emits a LiveTranscriptionEvent
-    const alt = evt?.channel?.alternatives?.[0];
-    const text = (alt?.transcript || "").trim();
-    const isFinal = Boolean(evt?.is_final);
-
-    if (!text) return;
-
-    if (!isFinal) {
-      sendJson({ type: "partial", text });
-      return;
-    }
-
-    // final
-    sendJson({ type: "final", text });
-    session.addUser(text);
-
-    // Tutor brain
-    const { speech, notes } = await tutorReply(session, text);
-    session.addAssistant(speech, notes);
-    sendJson({ type: "tutor_notes", notes });
-    sendJson({ type: "tutor_response", speech });
-
-    // Send vocabulary updates if present
-    if (notes?.vocabulary && Array.isArray(notes.vocabulary) && notes.vocabulary.length > 0) {
-      sendJson({ type: "vocab_update", vocab: notes.vocabulary });
-    }
-
-    // Send lesson plan updates
-    sendJson({ type: "lesson_plan", lesson: session.getLessonPlan() });
-
-    // TTS streaming back to client
     try {
-      isSpeaking = true;
-      sendJson({ type: "tts_state", speaking: true });
+      // Deepgram SDK emits a LiveTranscriptionEvent
+      const alt = evt?.channel?.alternatives?.[0];
+      const text = (alt?.transcript || "").trim();
+      const isFinal = Boolean(evt?.is_final);
 
-      tts = deepgram.speak.live({
-        model: DG_TTS_MODEL,
-        encoding: "linear16",
-        sample_rate: 48000
-      });
+      if (!text) return;
 
-      tts.on(LiveTTSEvents.Open, () => {
-        // start speaking
-        tts.send({ type: "Speak", text: speech });
-        tts.send({ type: "Flush" });
-      });
+      if (!isFinal) {
+        sendJson({ type: "partial", text });
+        return;
+      }
 
-      tts.on(LiveTTSEvents.Audio, (audioChunk) => {
-        // audioChunk is Buffer
-        if (client.readyState === 1) client.send(audioChunk, { binary: true });
-      });
+      // final
+      sendJson({ type: "final", text });
+      session.addUser(text);
 
-      tts.on(LiveTTSEvents.Flushed, () => {
-        // completed
-        stopTTS("done");
-      });
+      // Tutor brain
+      console.log('[Transcript] Processing:', text);
+      const { speech, notes } = await tutorReply(session, text);
+      console.log('[Tutor Response] Speech length:', speech.length, 'chars');
+      session.addAssistant(speech, notes);
+      sendJson({ type: "tutor_notes", notes });
+      sendJson({ type: "tutor_response", speech });
 
-      tts.on(LiveTTSEvents.Error, (e) => {
-        sendJson({ type: "status", ok: false, message: "tts_error", error: String(e?.message || e) });
-        stopTTS("error");
-      });
+      // Send vocabulary updates if present
+      if (notes?.vocabulary && Array.isArray(notes.vocabulary) && notes.vocabulary.length > 0) {
+        console.log('[Vocabulary] Sending', notes.vocabulary.length, 'words');
+        sendJson({ type: "vocab_update", vocab: notes.vocabulary });
+      }
 
-      tts.on(LiveTTSEvents.Close, () => {
-        stopTTS("close");
+      // Send lesson plan updates
+      sendJson({ type: "lesson_plan", lesson: session.getLessonPlan() });
+
+      // TTS streaming back to client
+      try {
+        isSpeaking = true;
+        sendJson({ type: "tts_state", speaking: true });
+
+        console.log('[TTS] Creating connection for speech:', speech.slice(0, 50) + '...');
+        tts = deepgram.speak.live({
+          model: DG_TTS_MODEL,
+          encoding: "linear16",
+          sample_rate: 48000
+        });
+
+        tts.on(LiveTTSEvents.Open, () => {
+          console.log('[TTS] Connection opened, sending speech');
+          tts.send({ type: "Speak", text: speech });
+          tts.send({ type: "Flush" });
+        });
+
+        tts.on(LiveTTSEvents.Audio, (audioChunk) => {
+          // audioChunk is Buffer
+          if (client.readyState === 1) client.send(audioChunk, { binary: true });
+        });
+
+        tts.on(LiveTTSEvents.Flushed, () => {
+          console.log('[TTS] Flushed, playback complete');
+          stopTTS("done");
+        });
+
+        tts.on(LiveTTSEvents.Error, (e) => {
+          console.error('[TTS Error]:', e);
+          sendJson({ type: "status", ok: false, message: "tts_error", error: String(e?.message || e) });
+          stopTTS("error");
+        });
+
+        tts.on(LiveTTSEvents.Close, () => {
+          console.log('[TTS] Connection closed');
+          stopTTS("close");
+        });
+      } catch (e) {
+        console.error('[TTS Exception]:', e);
+        sendJson({ type: "status", ok: false, message: "tts_exception", error: String(e?.message || e) });
+        stopTTS("exception");
+      }
+    } catch (error) {
+      console.error('[STT Transcript Error]:', error);
+      sendJson({
+        type: "status",
+        ok: false,
+        message: "tutor_error",
+        error: error.message
       });
-    } catch (e) {
-      sendJson({ type: "status", ok: false, message: "tts_exception", error: String(e?.message || e) });
-      stopTTS("exception");
+      // Send fallback response
+      const fallback = "Désolé, j'ai eu un problème. Pouvez-vous répéter?";
+      sendJson({ type: "tutor_response", speech: fallback });
     }
   });
 
@@ -255,7 +275,12 @@ wss.on("connection", async (client) => {
       // If user speaks while TTS still going, barge-in
       stopTTS("barge_in_audio");
     }
-    stt.send(data);
+    try {
+      stt.send(data);
+    } catch (error) {
+      console.error('[STT Send Error]:', error);
+      sendJson({ type: "status", ok: false, message: "stt_send_error", error: error.message });
+    }
   });
 
   client.on("close", () => {

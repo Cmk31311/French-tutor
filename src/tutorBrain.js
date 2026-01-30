@@ -72,6 +72,8 @@ async function callLLM(session, userText, config) {
     const data = await resp.json();
     const content = data?.choices?.[0]?.message?.content || "";
 
+    console.log('[LLM Response]:', content.slice(0, 200));
+
     try {
       const parsed = JSON.parse(content);
       const speech = String(parsed?.speech || "").trim();
@@ -79,9 +81,11 @@ async function callLLM(session, userText, config) {
       if (!speech) throw new Error("Empty speech");
       return { speech, notes };
     } catch (e) {
+      console.error('[LLM Parse Error]:', e, 'Content:', content);
       return fallbackTutor(userText, `${config.provider} returned non-JSON or invalid schema`);
     }
   } catch (e) {
+    console.error('[LLM Exception]:', e.message);
     return fallbackTutor(userText, `${config.provider} exception: ${e.message}`);
   }
 }
