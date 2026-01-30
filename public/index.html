@@ -3,41 +3,294 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>French Voice Tutor</title>
+    <title>French Tutor - AI Learning Dashboard</title>
     <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; max-width: 920px; }
-      .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-      button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; cursor: pointer; background: #fff; }
-      button:disabled { opacity: .5; cursor: not-allowed; }
-      .pill { padding: 4px 10px; border-radius: 999px; background: #f3f3f3; border: 1px solid #e6e6e6; font-size: 12px; }
-      .box { border: 1px solid #e6e6e6; border-radius: 12px; padding: 12px; background: #fafafa; }
-      #log { white-space: pre-wrap; line-height: 1.35; }
-      .small { color: #666; font-size: 13px; }
-      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-      @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+        color: #333;
+      }
+      .container { max-width: 1400px; margin: 0 auto; }
+
+      /* Header */
+      .header {
+        background: white;
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      }
+      .header h1 {
+        font-size: 32px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 8px;
+      }
+      .header p { color: #666; font-size: 14px; }
+
+      /* Controls */
+      .controls {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-top: 16px;
+        flex-wrap: wrap;
+      }
+      button {
+        padding: 12px 24px;
+        border-radius: 12px;
+        border: none;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 14px;
+      }
+      #startBtn { background: #10b981; color: white; }
+      #startBtn:hover:not(:disabled) { background: #059669; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(16,185,129,0.4); }
+      #stopBtn { background: #ef4444; color: white; }
+      #stopBtn:hover:not(:disabled) { background: #dc2626; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(239,68,68,0.4); }
+      #resetBtn { background: #6366f1; color: white; }
+      #resetBtn:hover:not(:disabled) { background: #4f46e5; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(99,102,241,0.4); }
+      button:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+
+      .status-pill {
+        padding: 6px 16px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+      .status-connected { background: #d1fae5; color: #065f46; }
+      .status-disconnected { background: #fee2e2; color: #991b1b; }
+      .status-speaking { background: #dbeafe; color: #1e40af; }
+      .status-listening { background: #fef3c7; color: #92400e; }
+
+      /* Main Grid */
+      .main-grid {
+        display: grid;
+        grid-template-columns: 1fr 400px;
+        gap: 20px;
+        margin-bottom: 20px;
+      }
+
+      /* Lesson Plan Panel */
+      .lesson-panel {
+        background: white;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      }
+      .lesson-panel h2 {
+        font-size: 20px;
+        margin-bottom: 16px;
+        color: #667eea;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .lesson-step {
+        background: #f9fafb;
+        padding: 16px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+        border-left: 4px solid #667eea;
+      }
+      .lesson-step.completed { border-left-color: #10b981; opacity: 0.7; }
+      .lesson-step.current { border-left-color: #f59e0b; background: #fffbeb; }
+      .lesson-step h3 { font-size: 14px; margin-bottom: 8px; color: #333; }
+      .lesson-step p { font-size: 13px; color: #666; line-height: 1.5; }
+
+      /* Vocabulary Cards */
+      .vocab-panel {
+        background: white;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        max-height: 600px;
+        overflow-y: auto;
+      }
+      .vocab-panel h2 {
+        font-size: 20px;
+        margin-bottom: 16px;
+        color: #764ba2;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .vocab-card {
+        background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+        border: 2px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+        transition: all 0.2s;
+      }
+      .vocab-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-color: #667eea; }
+      .vocab-french {
+        font-size: 24px;
+        font-weight: 700;
+        color: #667eea;
+        margin-bottom: 8px;
+      }
+      .vocab-pronunciation {
+        font-size: 14px;
+        color: #f59e0b;
+        font-style: italic;
+        margin-bottom: 8px;
+      }
+      .vocab-english {
+        font-size: 16px;
+        color: #4b5563;
+        margin-bottom: 12px;
+      }
+      .vocab-play {
+        background: #667eea;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        transition: all 0.2s;
+      }
+      .vocab-play:hover { background: #5568d3; transform: scale(1.05); }
+
+      /* Conversation Panel */
+      .conversation-panel {
+        background: white;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        grid-column: 1 / -1;
+      }
+      .conversation-panel h2 {
+        font-size: 20px;
+        margin-bottom: 16px;
+        color: #10b981;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .conversation {
+        max-height: 400px;
+        overflow-y: auto;
+        padding: 16px;
+        background: #f9fafb;
+        border-radius: 12px;
+      }
+      .message {
+        margin-bottom: 16px;
+        padding: 12px 16px;
+        border-radius: 12px;
+        max-width: 80%;
+        animation: fadeIn 0.3s;
+      }
+      .message-user {
+        background: #dbeafe;
+        margin-left: auto;
+        text-align: right;
+      }
+      .message-tutor {
+        background: white;
+        border: 2px solid #e5e7eb;
+      }
+      .message-label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+        color: #6b7280;
+      }
+      .message-text {
+        font-size: 15px;
+        line-height: 1.6;
+        color: #1f2937;
+      }
+      .message-partial {
+        opacity: 0.6;
+        font-style: italic;
+      }
+
+      /* Progress Bar */
+      .progress-bar {
+        background: #e5e7eb;
+        height: 8px;
+        border-radius: 4px;
+        margin: 16px 0;
+        overflow: hidden;
+      }
+      .progress-fill {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        height: 100%;
+        transition: width 0.3s;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      @media (max-width: 1024px) {
+        .main-grid { grid-template-columns: 1fr; }
+      }
     </style>
   </head>
   <body>
-    <h1>French Voice Tutor</h1>
-    <p class="small">Press Start, speak, and the tutor will answer with streaming voice. If you talk while it’s speaking, it stops (barge‑in).</p>
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <h1>🇫🇷 AI French Tutor</h1>
+        <p>Your personal French learning companion with adaptive lesson plans</p>
 
-    <div class="row">
-      <button id="startBtn">Start</button>
-      <button id="stopBtn" disabled>Stop</button>
-      <button id="resetBtn" disabled>Reset Session</button>
-      <span class="pill" id="statusPill">disconnected</span>
-      <span class="pill" id="ttsPill">tts: idle</span>
-    </div>
-
-    <div class="grid" style="margin-top: 14px;">
-      <div class="box">
-        <strong>Live transcript</strong>
-        <div id="partial" class="small" style="margin-top: 8px;"></div>
-        <div id="final" style="margin-top: 10px;"></div>
+        <div class="controls">
+          <button id="startBtn">🎙️ Start Learning</button>
+          <button id="stopBtn" disabled>⏹️ Stop</button>
+          <button id="resetBtn" disabled>🔄 New Session</button>
+          <span class="status-pill status-disconnected" id="statusPill">Disconnected</span>
+          <span class="status-pill status-listening" id="ttsPill" style="display:none;">Listening</span>
+        </div>
       </div>
-      <div class="box">
-        <strong>Debug / notes</strong>
-        <div id="log" class="small" style="margin-top: 8px;"></div>
+
+      <!-- Main Grid -->
+      <div class="main-grid">
+        <!-- Lesson Plan -->
+        <div class="lesson-panel">
+          <h2>📚 Your Learning Path</h2>
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+          </div>
+          <div id="lessonSteps">
+            <div class="lesson-step">
+              <h3>Waiting for lesson plan...</h3>
+              <p>Start a session and the AI will create a personalized learning plan for you.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Vocabulary Cards -->
+        <div class="vocab-panel">
+          <h2>📖 Vocabulary</h2>
+          <div id="vocabCards">
+            <p style="color: #9ca3af; text-align: center; padding: 40px 20px;">
+              Vocabulary words will appear here as you learn
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Conversation -->
+      <div class="conversation-panel">
+        <h2>💬 Live Conversation</h2>
+        <div class="conversation" id="conversation">
+          <p style="color: #9ca3af; text-align: center; padding: 40px;">
+            Press "Start Learning" and begin speaking in French or English...
+          </p>
+        </div>
       </div>
     </div>
 

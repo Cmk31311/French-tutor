@@ -138,6 +138,15 @@ wss.on("connection", async (client) => {
     const { speech, notes } = await tutorReply(session, text);
     session.addAssistant(speech, notes);
     sendJson({ type: "tutor_notes", notes });
+    sendJson({ type: "tutor_response", speech });
+
+    // Send vocabulary updates if present
+    if (notes?.vocabulary && Array.isArray(notes.vocabulary) && notes.vocabulary.length > 0) {
+      sendJson({ type: "vocab_update", vocab: notes.vocabulary });
+    }
+
+    // Send lesson plan updates
+    sendJson({ type: "lesson_plan", lesson: session.getLessonPlan() });
 
     // TTS streaming back to client
     try {
@@ -188,9 +197,54 @@ wss.on("connection", async (client) => {
         if (msg?.type === "reset") {
           session.reset();
           sendJson({ type: "status", ok: true, message: "session_reset" });
+          sendJson({ type: "lesson_plan", lesson: session.getLessonPlan() });
         }
         if (msg?.type === "stop_tts") {
           stopTTS("client_stop");
+        }
+        if (msg?.type === "get_lesson_plan") {
+          sendJson({ type: "lesson_plan", lesson: session.getLessonPlan() });
+        }
+        if (msg?.type === "speak_word") {
+          // Speak a single vocabulary word
+          const word = msg.word || "";
+          if (word && tts === null) {
+            try {
+              isSpeaking = true;
+              sendJson({ type: "tts_state", speaking: true });
+
+              tts = deepgram.speak.live({
+                model: DG_TTS_MODEL,
+                encoding: "linear16",
+                sample_rate: 48000
+              });
+
+              tts.on(LiveTTSEvents.Open, () => {
+                tts.send({ type: "Speak", text: word });
+                tts.send({ type: "Flush" });
+              });
+
+              tts.on(LiveTTSEvents.Audio, (audioChunk) => {
+                if (client.readyState === 1) client.send(audioChunk, { binary: true });
+              });
+
+              tts.on(LiveTTSEvents.Flushed, () => {
+                stopTTS("done");
+              });
+
+              tts.on(LiveTTSEvents.Error, (e) => {
+                sendJson({ type: "status", ok: false, message: "tts_error", error: String(e?.message || e) });
+                stopTTS("error");
+              });
+
+              tts.on(LiveTTSEvents.Close, () => {
+                stopTTS("close");
+              });
+            } catch (e) {
+              sendJson({ type: "status", ok: false, message: "tts_exception", error: String(e?.message || e) });
+              stopTTS("exception");
+            }
+          }
         }
       } catch (_) {}
       return;
