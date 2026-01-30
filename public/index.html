@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>French Voice Tutor</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; max-width: 920px; }
+      .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+      button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; cursor: pointer; background: #fff; }
+      button:disabled { opacity: .5; cursor: not-allowed; }
+      .pill { padding: 4px 10px; border-radius: 999px; background: #f3f3f3; border: 1px solid #e6e6e6; font-size: 12px; }
+      .box { border: 1px solid #e6e6e6; border-radius: 12px; padding: 12px; background: #fafafa; }
+      #log { white-space: pre-wrap; line-height: 1.35; }
+      .small { color: #666; font-size: 13px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <h1>French Voice Tutor</h1>
+    <p class="small">Press Start, speak, and the tutor will answer with streaming voice. If you talk while it’s speaking, it stops (barge‑in).</p>
+
+    <div class="row">
+      <button id="startBtn">Start</button>
+      <button id="stopBtn" disabled>Stop</button>
+      <button id="resetBtn" disabled>Reset Session</button>
+      <span class="pill" id="statusPill">disconnected</span>
+      <span class="pill" id="ttsPill">tts: idle</span>
+    </div>
+
+    <div class="grid" style="margin-top: 14px;">
+      <div class="box">
+        <strong>Live transcript</strong>
+        <div id="partial" class="small" style="margin-top: 8px;"></div>
+        <div id="final" style="margin-top: 10px;"></div>
+      </div>
+      <div class="box">
+        <strong>Debug / notes</strong>
+        <div id="log" class="small" style="margin-top: 8px;"></div>
+      </div>
+    </div>
+
+    <script type="module" src="/client.js"></script>
+  </body>
+</html>
