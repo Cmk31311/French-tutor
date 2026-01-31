@@ -57,7 +57,8 @@ CORRECTION POLICY (${prefs.correction_intensity || "light"}):
 - medium: 2-3 errors, with reformulation
 - heavy: Detailed analysis, all errors noted
 
-Return ONLY valid JSON in this schema:
+CRITICAL: You MUST return ONLY valid JSON. No markdown, no code blocks, no explanations outside the JSON.
+Your entire response must be parseable JSON in this exact schema:
 {
   "speech": "What you say to the student (natural, conversational French/English mix as appropriate)",
   "notes": {
