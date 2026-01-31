@@ -253,14 +253,18 @@ function clearPlaybackQueue() {
 }
 
 async function start() {
+  console.log('[Client] Starting voice tutor...');
   setStatus("Connecting...", "disconnected");
   conversation.innerHTML = '';
   conversationHistory = [];
 
-  ws = new WebSocket(`${location.origin.replace("http", "ws")}/ws`);
+  const wsUrl = `${location.origin.replace("http", "ws")}/ws`;
+  console.log('[Client] Connecting to WebSocket:', wsUrl);
+  ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";
 
   ws.onopen = async () => {
+    console.log('[Client] WebSocket connected successfully');
     reconnectAttempts = 0;  // Reset reconnect counter on successful connection
     setStatus("Connected", "connected");
     setTTSStatus(false);
@@ -268,7 +272,9 @@ async function start() {
     stopBtn.disabled = false;
     resetBtn.disabled = false;
 
+    console.log('[Client] Starting microphone...');
     await startMic();
+    console.log('[Client] Microphone started, ready to listen');
 
     // Request initial lesson plan
     ws.send(JSON.stringify({ type: 'get_lesson_plan' }));
@@ -412,8 +418,11 @@ async function resetSession() {
 }
 
 async function startMic() {
+  console.log('[Client] Requesting microphone permission...');
   micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  console.log('[Client] Microphone permission granted');
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  console.log('[Client] AudioContext created, sample rate:', audioCtx.sampleRate);
 
   sourceNode = audioCtx.createMediaStreamSource(micStream);
   processorNode = audioCtx.createScriptProcessor(4096, 1, 1);

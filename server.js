@@ -55,6 +55,7 @@ const server = http.createServer(serveStatic);
 const wss = new WebSocketServer({ server, path: "/ws" });
 
 wss.on("connection", async (client) => {
+  console.log('[WebSocket] New client connected');
   const session = createSession();
 
   // 1) Deepgram STT live connection
@@ -96,6 +97,7 @@ wss.on("connection", async (client) => {
 
   // STT events
   stt.on(LiveTranscriptionEvents.Open, () => {
+    console.log('[Deepgram STT] Connection opened');
     sendJson({ type: "status", ok: true, message: "stt_connected" });
   });
 
@@ -284,6 +286,7 @@ wss.on("connection", async (client) => {
   });
 
   client.on("close", () => {
+    console.log('[WebSocket] Client disconnected');
     try { stt.finish(); } catch (_) {}
     stopTTS("client_close");
   });
